@@ -18,7 +18,7 @@ name: Context-Set
 provides:
   Context::Set:
     file: lib/Context/Set.pm
-    version: 0.01
+    version: 0.02
   Context::Set::Holder:
     file: lib/Context/Set/Holder.pm
     version: 0
@@ -43,12 +43,19 @@ provides:
   Context::Set::Storage::DBIC:
     file: lib/Context/Set/Storage/DBIC.pm
     version: 0
+  Context::Set::Storage::Split:
+    file: lib/Context/Set/Storage/Split.pm
+    version: 0
+  Context::Set::Storage::Split::Rule:
+    file: lib/Context/Set/Storage/Split/Rule.pm
+    version: 0
   Context::Set::Union:
     file: lib/Context/Set/Union.pm
     version: 0
 requires:
+  Log::Log4perl: 1.29
   Moose: 2.0401
   perl: 5.006
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01
+version: 0.02

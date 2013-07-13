@@ -2,6 +2,9 @@ package Context::Set::Storage::DBIC;
 use Moose;
 extends qw/Context::Set::Storage/;
 
+use Log::Log4perl;
+my $LOGGER = Log::Log4perl->get_logger();
+
 =head1 NAME
 
 Context::Set::Storage::DBIC - Manage context persistence in a L<DBIx::Class::ResultSet>
@@ -40,7 +43,7 @@ Usage:
 
 =cut
 
-has 'resultset' => ( is => 'ro', isa => 'DBIx::Class::ResultSet' , required => 1 );
+has 'resultset' => ( is => 'rw', isa => 'DBIx::Class::ResultSet' , required => 1 );
 
 =head2 populate_context
 
@@ -50,6 +53,11 @@ See super class L<Context::Set::Storage>
 
 sub populate_context{
   my ($self,$context) = @_;
+
+  my $rs = $self->resultset();
+  my $fullname = $context->fullname();
+
+  $LOGGER->debug("LOADING ".$fullname." from DBIC Rs ".$rs->result_source->name());
 
   my $kvs = $self->resultset->search_rs({ context_name => $context->fullname() },
                                         { order_by => [ 'key' , 'id' ] }
@@ -88,23 +96,46 @@ sub set_context_property{
 
     my $fullname = $context->fullname();
 
-    ## Blat the key
-    $self->resultset()->search_rs({ context_name => $fullname,
-                                    key => $prop
-                                  })->delete();
+    my $rs =  $self->resultset();
 
+    $LOGGER->debug("SETTING On Rs:'".$rs->result_source->name()."' context:'".$fullname."' key:'".$prop."' value:[".join(',', map{ $_ // 'UNDEF' } @$v).']');
+
+    ## Blat the key
+    $rs->search_rs({ context_name => $fullname,
+                     key => $prop
+                   })->delete();
+    ## And record each value (can be an array)
     foreach my $value ( @$v ){
-      $self->resultset()->create({ context_name => $fullname,
-                                   key => $prop,
-                                   value => $value,
-                                   is_array => $is_array
-                                 });
+      $rs->create({ context_name => $fullname,
+                    key => $prop,
+                    value => $value,
+                    is_array => $is_array
+                  });
     }
     return &{$after}();
   };
   return $self->resultset->result_source->schema()->txn_do($stuff);
 }
 
+=head2 delete_context_property
+
+See superclass L<Context::Set::Storage>
+
+=cut
+
+sub delete_context_property{
+  my ($self, $context, $prop, $after) = @_;
+  my $rs  = $self->resultset();
+  my $stuff = sub{
+    my $fullname = $context->fullname();
+    $LOGGER->debug("DELETING On RS '".$rs->result_source->name()."' context:'".$fullname."' key:'".$prop."'");
+    $rs->search_rs({ context_name => $fullname,
+                     key => $prop
+                   })->delete();
+    return &{$after}();
+  };
+  return $rs->result_source->schema()->txn_do($stuff);
+}
 
 __PACKAGE__->meta->make_immutable();
 1;

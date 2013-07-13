@@ -8,6 +8,7 @@ WriteMakefile
   'PREREQ_PM' => {
                    'DBD::SQLite' => '1.35',
                    'DBIx::Class::Schema::Loader' => '0.0701',
+                   'Log::Log4perl' => '1.29',
                    'Moose' => '2.0401',
                    'Test::More' => 0
                  },

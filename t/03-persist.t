@@ -1,13 +1,17 @@
 #!perl -T
 use strict;
 use warnings;
-use Test::More;
+use Test::More tests => 68;
 use Test::Fatal qw/dies_ok lives_ok/;
 use Context::Set::Manager;
 use Context::Set::Storage::DBIC;
+use Context::Set::Storage::Split;
 
 use DBI;
 use DBD::SQLite;
+
+use Log::Log4perl qw/:easy/;
+Log::Log4perl->easy_init($DEBUG);
 
 package My::Schema;
 ## This is a schema that will be build dynamically.
@@ -22,19 +26,56 @@ $dbh->do(q|CREATE TABLE contextvalue(id INTEGER PRIMARY KEY AUTOINCREMENT,
 context_name VARCHAR(512) NOT NULL,
 is_array BOOLEAN NOT NULL,
 key VARCHAR(512) NOT NULL,
-value VARCHAR(512));
-|);
+value VARCHAR(512));|);
+
+
+## For the split storage
+$dbh->do(q|
+CREATE TABLE aa(id INTEGER PRIMARY KEY AUTOINCREMENT,
+context_name VARCHAR(512) NOT NULL,
+is_array BOOLEAN NOT NULL,
+key VARCHAR(512) NOT NULL,
+value VARCHAR(512));|);
+
+$dbh->do(q|
+CREATE TABLE bb(id INTEGER PRIMARY KEY AUTOINCREMENT,
+context_name VARCHAR(512) NOT NULL,
+is_array BOOLEAN NOT NULL,
+key VARCHAR(512) NOT NULL,
+value VARCHAR(512));|);
 
 ## Build a schema dynamically.
 ok( my $schema = My::Schema->connect(sub{ return $dbh ;} , { unsafe => 1 } ), "Ok built schema with dbh");
-ok( my $rs = $schema->resultset('Contextvalue') , "Ok got resultset");
+cmp_ok( scalar($schema->sources) , 'eq' , 3 , "3 sources in schema");
 
+ok( my $rs = $schema->resultset('Contextvalue') , "Ok got resultset");
 
 ## And build a Context storage.
 my $storage_dbic = Context::Set::Storage::DBIC->new({ resultset => $rs });
 
+## We also need a split storage
+my $users_store = Context::Set::Storage::DBIC->new({ resultset => scalar($schema->resultset('Aa')) });
+my $general_store = Context::Set::Storage::DBIC->new({ resultset => scalar($schema->resultset('Bb')) });
 
-foreach my $storage ( $storage_dbic ){
+my $split_store = Context::Set::Storage::Split->new({
+                                                     rules => [{
+                                                                name => 'users_specific',
+                                                                test => sub{ shift->is_inside('users'); },
+                                                                storage => $users_store
+                                                               },
+                                                               {
+                                                                name => 'lists_specific',
+                                                                test => sub{ shift->is_inside('lists'); },
+                                                                storage => $general_store
+                                                               },
+                                                               {
+                                                                name => 'default',
+                                                                test => sub{ 1; },
+                                                                storage => $general_store
+                                                               }]
+                                                    });
+
+foreach my $storage ( $storage_dbic , $split_store ){
   {
     ## The manager under which stuff are stored
     my $cm = Context::Set::Manager->new({ storage => $storage });
@@ -66,7 +107,7 @@ foreach my $storage ( $storage_dbic ){
 
   {
     ## Another manager with no value setting.
-    my $cm = Context::Set::Manager->new({ storage => $storage });
+    my $cm = Context::Set::Manager->new({ storage => $storage, autoreload => 1 });
     my $universe = $cm->universe();
     ok( $universe->has_property('pi') , "Ok universe has property pi");
     ok( $universe->has_property('null') , "Ok universe has property null");
@@ -79,6 +120,14 @@ foreach my $storage ( $storage_dbic ){
 
     my $users_context = $cm->restrict('users');
     is_deeply( $users_context->get_property('beers') , [ 'duvel' , 'chimay' ] , "Ok good table of properties back");
+    ## Fiddle with the property hash of this context.
+    ## To check the refresh_from_storage method does its job
+    $users_context->properties()->{beers} = 'NOTHING';
+    is( $users_context->get_property('beers') , 'NOTHING' , "Fiddling with properties worked");
+
+    $users_context->refresh_from_storage();
+    is_deeply( $users_context->get_property('beers') , [ 'duvel' , 'chimay' ] , "Refreshing the context from storage pulled the right properties back again");
+
     cmp_ok( $users_context->fullname(), "eq" , "UNIVERSE/users" , "Ok good fullname for users");
     cmp_ok( $users_context->name() , 'eq' , 'users' , "Ok name is good");
     cmp_ok( $users_context->restricted()->name() , 'eq' , $universe->name() , "Ok restricted right context");
@@ -105,9 +154,16 @@ foreach my $storage ( $storage_dbic ){
     cmp_ok( $u1l1->get_property('flavour') , 'eq' ,'apple' , "u1l1 has apple flavour");
     cmp_ok( $list1->get_property('flavour') , 'eq' , 'blueberry' , "Ok list 1 has blueberry");
     cmp_ok( $user1_ctx->get_property('flavour') , 'eq', 'banana' , "Ok user1 has got banana");
+    is_deeply( $user1_ctx->lookup('beers')->delete_property('beers') , [ 'duvel' , 'chimay' ] , "Ok can delete beers from user1");
+    ## Now its just stella for the universe.
+    is_deeply( $user1_ctx->get_property('beers') , [ 'stella' ] , "Ok got only stella");
   }
 
 }
 
+## Check users_store and list stores are not empty.
+ok( $users_store->resultset->count() , "Ok something is stored in the users_store");
+ok( $general_store->resultset->count() , "Ok something is stored in the general store");
+ok( $split_store->rule('default') , "Ok can get the default rule from the split store");
 
 done_testing();

@@ -33,6 +33,22 @@ sub fullname{
   return 'union('.join(',', map{ $_->fullname() } @{$self->contexts} ).')';
 }
 
+=head2 is_inside
+
+Only operates on the parent context in order.
+
+=cut
+
+sub is_inside{
+  my ($self,$name) = @_;
+
+  foreach my $context  ( @{$self->contexts()} ){
+    if( $context->is_inside($name) ){
+      return 1;
+    }
+  }
+}
+
 =head2 has_property
 
 See superclass Context::Set.
@@ -84,6 +100,16 @@ sub get_property{
     }
   }
   confess("Cannot find property $prop_name anywhere in ".$self->fullname());
+}
+
+sub _lookup_parents{
+  my ($self,$pname) = @_;
+  foreach my $context ( @{$self->contexts()} ){
+    if( my $hit = $context->lookup($pname) ){
+      return $hit;
+    }
+  }
+  return undef;
 }
 
 __PACKAGE__->meta->make_immutable();

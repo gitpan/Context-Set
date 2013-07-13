@@ -35,6 +35,17 @@ sub fullname{
   return $self->restricted()->fullname().'/'.$self->name();
 }
 
+=head2 is_inside
+
+See superclass
+
+=cut
+
+sub is_inside{
+  my ($self, $name) = @_;
+  return $self->restricted->name() eq $name || $self->restricted->is_inside($name);
+}
+
 =head2 has_property
 
 See superclass Context.
@@ -59,6 +70,11 @@ sub get_property{
     return $self->properties()->{$prop_name};
   }
   return $self->restricted()->get_property($prop_name);
+}
+
+sub _lookup_parents{
+  my ($self,$propname) = @_;
+  return $self->restricted->lookup($propname);
 }
 
 __PACKAGE__->meta->make_immutable();

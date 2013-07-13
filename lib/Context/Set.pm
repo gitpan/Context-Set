@@ -1,6 +1,6 @@
 package Context::Set;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Moose;
 
@@ -14,6 +14,10 @@ sub fullname{
   return $self->name();
 }
 
+sub is_inside{
+  my ($self , $name) = @_;
+  return $self->name() eq $name;
+}
 
 sub restrict{
   my ($self, $restriction_name) = @_;
@@ -58,6 +62,26 @@ sub get_property{
 sub has_property{
   my ($self, $prop_name) = @_;
   return exists $self->properties()->{$prop_name};
+}
+
+sub delete_property{
+  my ($self, $prop_name) = @_;
+  unless( $self->has_property($prop_name) ){
+    confess("No property named $prop_name in ".$self->name()." cannot delete it");
+  }
+  return delete $self->properties()->{$prop_name};
+}
+
+sub lookup{
+  my ($self, $prop_name) = @_;
+  unless( $prop_name ){ confess("Missing prop_name"); }
+  return $self if $self->properties()->{$prop_name};
+  return $self->_lookup_parents($prop_name);
+}
+
+sub _lookup_parents{
+  my ($self, $pname) = @_;
+  return undef;
 }
 
 __PACKAGE__->meta->make_immutable();
@@ -136,6 +160,16 @@ in the UNIVERSE in a unique manner.
 
 Returns the local name of this context. fullname is more useful.
 
+=head2 is_inside
+
+Returns true if this storage is inside a context matching the given name.
+
+Note that this excludes this Context::Set
+
+Usage:
+
+ if( $this->is_inside('users') ){ ... }
+
 =head2 has_property
 
 Returns true if there is a property of this name in this context.
@@ -161,6 +195,27 @@ Usage:
   $this->set_property('pi' , 3.14159 );
   $this->set_property('fibo', [ 1, 2, 3, 5, 8, 12, 20 ]);
 
+=head2 delete_property
+
+Deletes the given property from this context. Dies if no property with this name exists.
+
+Returns the current value of this property (so you have a chance to look at it a last time
+before it goes away).
+
+Usage:
+
+  my $deleted_value = $this->delete_property('pi');
+
+
+=head2 lookup
+
+Returns the context holding the given property or undef if none is found.
+
+Usage:
+
+  if( my $holder_context = $context->lookup('pi') ){
+     ## $holder_context is the first context holding this property.
+  }
 
 =head2 unite
 
